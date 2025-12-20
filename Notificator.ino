@@ -51,13 +51,6 @@ void GenerateSosSignal() {
   wdt_reset();
 }
 
-// void SendValuesToSerial() {
-//   String message = "";
-//   if (COHasHighConcentration)
-//     message += "CO: " + String(COConcentration) + "; ";
-//   Serial.println(message);
-// }
-
 void SetBuzzerState(bool activate) {
   digitalWrite(AlertLedPin, activate);
   if (!Mute)

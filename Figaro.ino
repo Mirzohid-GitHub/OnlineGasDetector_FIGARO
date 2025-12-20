@@ -2,31 +2,37 @@ void PrepareGasAnalyser() {
 }
 
 void GasAnalyse() {
-  int figaroAnalogValue = analogRead(FigaroAnalogPin);   
-  Serial.print("Аналоговое значение figaro:");    
-  Serial.println(figaroAnalogValue);    
+  int figaroAnalogValue = 0;
+  for (int i = 0; i < 5; i++) {
+    figaroAnalogValue += analogRead(FigaroAnalogPin);
+    delay(100);
+  }
+  figaroAnalogValue = figaroAnalogValue / 5.0;
+  float COConcentration = (figaroAnalogValue * (3.8 / 1023.0) * 1000) / 3.8;
 
-  float figaroAnalogVoltage = figaroAnalogValue * (5.0 / 1023.0);
-  Serial.print("Аналоговое значение figaro:");    
-  Serial.println(figaroAnalogValue);    
+  if (COConcentration > 50) {
+    COConcentration += 300;
+  }
 
-  float perPPMValue = figaroAnalogVoltage / 1000;
-  Serial.print("Значение 1ppm:");    
-  Serial.println(perPPMValue);    
-
-  // делим на 1000 потому что figaro считает до 1000ppm
-  COConcentration = int(figaroAnalogVoltage / perPPMValue);
+  // Проверяем превышение порога
   COHasHighConcentration = COConcentration >= CoThreshold;
 
   if (PlotterMode) {
-    Serial.print("CO:");              //FORTEST
-    Serial.println(COConcentration);  //FORTEST
+    Serial.print("CO:");
+    if (COConcentration < 350) {
+      Serial.println("<350");
+    } 
+    else if (COConcentration > 1000) {
+      Serial.println(">1000");
+    }
+    else {
+      Serial.println(COConcentration);
+    }
   }
 
   if (!TestAlertIsActive) {
     AlertIsActive = COHasHighConcentration;
-    if(!NeedForSendRequest)
-      NeedForSendRequest = COHasHighConcentration;
+    // if (!NeedForSendRequest)
+      // NeedForSendRequest = COHasHighConcentration;
   }
 }
-

@@ -14,6 +14,7 @@ unsigned long SendRequestLastTickTime = 0;
 int SendRequestWorkInterval = 2000;
 
 volatile bool NeedForSendRequest = false;
+volatile bool RequestSent = false ;
 
 #pragma endregion
 
@@ -21,9 +22,9 @@ volatile bool NeedForSendRequest = false;
 
 #define TestButtonPin 3
 #define MuteButtonPin 2
-#define AlertLedPin A1
-#define AliveLedPin A0
 #define BuzzerPin 13
+#define AliveLedPin A1
+#define AlertLedPin A3
 
 unsigned long AliveIndicatorLastTickTime = 0;
 const int AliveIndicatorWorkInterval = 5000;
@@ -44,16 +45,16 @@ bool TestAlertIsActive = false;  // Режим теста
 
 #pragma region GasAnalyser
 
-#define FigaroAnalogPin A3 // Аналоговый пин Figaro
-int CoThreshold = 200;
+#define FigaroAnalogPin A6 // Аналоговый пин Figaro
+int CoThreshold = 350;
 unsigned long GasAnalyseLastTickTime = 0;
-int GasAnalyseWorkInterval = 1000;
+int GasAnalyseWorkInterval = 0;
 
 bool COHasHighConcentration = false;  // Высокая концентрация Угарного газа
 bool PlotterMode = true;              // Выводим значения в гравик //FORTEST
 bool Preparing = true;                // Выводим значения в гравик //FORTEST
 
-float COConcentration = 0;  // Уонцентрация Угарного газа
+float COConcentration = 0;  // Концентрация Угарного газа
 #pragma endregion
 
 String deviceId = "123";
@@ -74,12 +75,13 @@ void setup() {
   pinMode(FigaroAnalogPin, INPUT);
 
   digitalWrite(BuzzerPin, LOW);
+  
   //Настройка аппаратного прерывания для кнопок
   attachInterrupt(digitalPinToInterrupt(MuteButtonPin), MuteButtonPressEvent, FALLING);
   attachInterrupt(digitalPinToInterrupt(TestButtonPin), TestButtonPressEvent, FALLING);
 
-  analogWrite(AliveLedPin, 255);
-  analogWrite(AlertLedPin, 255);
+  //Задаем режим опорного напряжения
+  analogReference(EXTERNAL);
 
   //Подготовка и подключение Serial-порта
   PrepareSerialPorts();
@@ -96,9 +98,6 @@ void setup() {
   //Включение Watchdog на 8 секунд
   wdt_enable(WDTO_8S);
   Preparing = false;
-  //Выключаем оба светодиода, что означает окончание подготовки устройства
-  analogWrite(AliveLedPin, 0);
-  analogWrite(AlertLedPin, 0);
 
   Serial.println("Start");
 }
@@ -113,7 +112,7 @@ void loop() {
     SendRequest(TestAlertIsActive);
   }
   //Маргаем индикатором рабочего режима
-  if (tick(AliveIndicatorLastTickTime, AliveIndicatorWorkInterval)) {
+  if (tick(AliveIndicatorLastTickTime, AliveIndicatorWorkInterval) && !AlertIsActive) {
       digitalWrite(AliveLedPin, HIGH);
       delay(50);
       digitalWrite(AliveLedPin, LOW);

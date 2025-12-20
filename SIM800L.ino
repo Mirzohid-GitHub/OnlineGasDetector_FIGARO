@@ -51,7 +51,7 @@ void SendRequest(bool isTestMode) {
           TestAlertIsActive = false;
         }
       }
-      DeactivateGsmModulePower();
+      // DeactivateGsmModulePower();
     }
   }
 }
