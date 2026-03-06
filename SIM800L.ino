@@ -2,13 +2,9 @@
 const char apn[] = "internet";
 const char user[] = "";
 const char pass[] = "";
+const char fixedAlertPhone[] = "+998990074787";
 const String server = "45.138.159.216";
 const int port = 8080;
-bool GsmModuleIsPreparedForSendRequest = false;
-
-// SMS settings
-// Формат номера: "+998901234567" (международный формат с + и кодом страны)
-const String smsPhoneNumber = "+998990074787"; // Замените на ваш номер
 
 void SendRequest(bool isTestMode) {
   if (NeedForSendRequest || isTestMode) {
@@ -26,56 +22,90 @@ void SendRequest(bool isTestMode) {
       return;
     }
 
-    // Сначала отправляем SMS
-    bool smsSent = SendSMS(isTestMode);
-    if (smsSent) {
-      Serial.println("SMS sent successfully");
-    } else {
-      Serial.println("Failed to send SMS");
-    }
-    
-    delay(2000); // Небольшая задержка между SMS и HTTP
+    // 2.1: Отправляем SMS фиксированному номеру
+    SendSMS(isTestMode, String(fixedAlertPhone));
+    delay(2000);
 
-    // Затем отправляем HTTP запрос
+    // 2.2: Отправляем HTTP запрос на сервер, получаем "1,тел1,тел2,..."
     String ServerResponse = SendRequestToServer(isTestMode);
     Serial.println(ServerResponse);
     if (ServerResponse == "") {
-      Serial.println("Failed to send htpp request");
+      Serial.println(F("Failed to send http request"));
       RestartGsmModule();
     } else {
-      String responseNumber = ExtractResponseNumber(ServerResponse);
-      if (responseNumber == "1") {
-        Serial.println("SUCCESS");
+      String body = ExtractResponseBody(ServerResponse);
+      if (body.length() > 0 && body.charAt(0) == '1') {
+        Serial.println(F("SUCCESS"));
         NeedForSendRequest = false;
         if (TestAlertIsActive) {
           TestAlertIsActive = false;
         }
+        // 2.3: Отправляем SMS всем номерам из ответа сервера
+        int commaIdx = body.indexOf(',');
+        if (commaIdx != -1) {
+          String phones = body.substring(commaIdx + 1);
+          SendSMSToOwners(isTestMode, phones);
+        }
+        // Всё успешно — выключаем GSM модуль
+        DeactivateGsmModulePower();
       }
-      // DeactivateGsmModulePower();
     }
   }
 }
 
-bool SendSMS(bool isTestMode) {
+
+// Отправляет SMS каждому номеру из строки phones (через запятую).
+// Каждый номер повторяется до успешной отправки.
+void SendSMSToOwners(bool isTestMode, String phones) {
+  int start = 0;
+  while (start < (int)phones.length()) {
+    int commaIdx = phones.indexOf(',', start);
+    String phone;
+    if (commaIdx == -1) {
+      phone = phones.substring(start);
+      start = phones.length();
+    } else {
+      phone = phones.substring(start, commaIdx);
+      start = commaIdx + 1;
+    }
+    phone.trim();
+    if (phone.length() > 0) {
+      bool sent = false;
+      while (!sent) {
+        sent = SendSMS(isTestMode, phone);
+        if (sent) {
+          Serial.print(F("SMS sent to "));
+          Serial.println(phone);
+        } else {
+          Serial.print(F("Retry SMS to "));
+          Serial.println(phone);
+          delay(2000);
+        }
+      }
+      delay(2000);
+    }
+  }
+}
+
+bool SendSMS(bool isTestMode, String phoneNumber) {
   // Устанавливаем текстовый режим SMS
   String response = sendAtCommand(F("AT+CMGF=1"), true);
   if (response.indexOf(F("OK")) == -1) {
-    Serial.println("Failed to set SMS text mode");
+    Serial.println(F("Failed to set SMS text mode"));
     return false;
   }
-  
+
   delay(500);
-  
-  // Устанавливаем кодировку для кириллицы (опционально)
+
   sendAtCommand(F("AT+CSCS=\"GSM\""), true);
   delay(500);
-  
+
   // Указываем номер получателя
-  String atCommand = "AT+CMGS=\"" + smsPhoneNumber + "\"";
+  String atCommand = "AT+CMGS=\"" + phoneNumber + "\"";
   SIM800L.println(atCommand);
   Serial.println(atCommand);
   delay(1000);
-  
+
   // Формируем текст сообщения
   String smsText = "";
   if (isTestMode) {
@@ -83,33 +113,29 @@ bool SendSMS(bool isTestMode) {
   } else {
     smsText = "ALARM! CO detected: " + String((int)COConcentration) + " ppm";
   }
-  
-  // Отправляем текст SMS
+
   SIM800L.print(smsText);
   delay(500);
-  
-  // Отправляем Ctrl+Z (символ завершения SMS)
+
+  // Ctrl+Z — завершение SMS
   SIM800L.write(0x1A);
-  Serial.println("SMS text sent, waiting for confirmation...");
-  
-  // Ждем подтверждения отправки
+  Serial.println(F("SMS text sent, waiting for confirmation..."));
+
   delay(5000);
   response = waitAtAnswer();
-  
+
   if (response.indexOf(F("+CMGS:")) >= 0 || response.indexOf(F("OK")) >= 0) {
     return true;
   }
-  
+
   return false;
 }
 
 void ActivateGsmModulePower() {
-  // подаем высокий сигнал пину MODEM_POWER_PIN, чтобы питание GSM-модуля включилось
   digitalWrite(MODEM_POWER_PIN, HIGH);
 }
 
 void DeactivateGsmModulePower() {
-  // подаем высокий сигнал пину MODEM_POWER_PIN, чтобы питание GSM-модуля выключилось
   digitalWrite(MODEM_POWER_PIN, LOW);
 }
 
@@ -119,18 +145,22 @@ void RestartGsmModule() {
   digitalWrite(MODEM_POWER_PIN, HIGH);
 }
 
-String ExtractResponseNumber(String line) {
-  line.trim();
-  if (line.startsWith(F("+HTTPREAD:"))) {
-    int startIndex = line.indexOf("\n");
-    String num = line.substring(startIndex + 1, startIndex + 2);
-    return num;
-  }
-  return "0";
+// Извлекает тело ответа из строки вида "+HTTPREAD: N\r\n<body>\r\nOK"
+String ExtractResponseBody(String data) {
+  int httpreadIdx = data.indexOf(F("+HTTPREAD:"));
+  if (httpreadIdx == -1) return "";
+  int bodyStart = data.indexOf('\n', httpreadIdx);
+  if (bodyStart == -1) return "";
+  bodyStart++; // пропускаем '\n'
+  int bodyEnd = data.indexOf(F("\r\nOK"), bodyStart);
+  if (bodyEnd == -1) bodyEnd = data.indexOf(F("\nOK"), bodyStart);
+  if (bodyEnd == -1) bodyEnd = data.length();
+  String body = data.substring(bodyStart, bodyEnd);
+  body.trim();
+  return body;
 }
 
 String GetRequestParams(bool isTestMode) {
-
   String result = "/msg/add?";
   char messageType = '2';
   if (isTestMode)
@@ -139,47 +169,36 @@ String GetRequestParams(bool isTestMode) {
 }
 
 int GetSignalLevel() {
-  //Получение информации об уровне сигнала
   sendAtCommand(F("at+csq"), false);
   delay(3000);
   String signalLevelString = waitAtAnswer();
   int signalLevel = signalLevelString.substring(signalLevelString.indexOf(' ') + 1).toInt();
+  if (signalLevel == 99) return 0;
   return signalLevel;
 }
 
 String SendRequestToServer(bool isTestMode) {
-  bool prepareResult = false;
-  prepareResult = prepareSIM800LForSendRequest(isTestMode);
-  if (prepareResult) {
-    String httpInitresult = sendAtCommand(F("AT+HTTPACTION=0"), true);
-    if (httpInitresult.indexOf(F("OK")) >= 0 && httpInitresult.indexOf(F("DEACT")) == -1) {
-      if (waitAtAnswer().indexOf("200,") >= 0) {
-        // isConnected(true);
-        String serverResponse = sendAtCommand(F("AT+HTTPREAD"), true);
-        sendAtCommand(F("AT+HTTPTERM"), true);
-        sendAtCommand(F("AT+SAPBR=0,1"), true);
-        return serverResponse;
-      }
-    }
-  } else
+  if (!prepareSIM800LForSendRequest(isTestMode)) {
     RestartGsmModule();
+    return "";
+  }
+  String httpInitresult = sendAtCommand(F("AT+HTTPACTION=0"), true);
+  if (httpInitresult.indexOf(F("OK")) >= 0 && httpInitresult.indexOf(F("DEACT")) == -1) {
+    if (waitAtAnswer().indexOf("200,") >= 0) {
+      String serverResponse = sendAtCommand(F("AT+HTTPREAD"), true);
+      sendAtCommand(F("AT+HTTPTERM"), true);
+      sendAtCommand(F("AT+SAPBR=0,1"), true);
+      return serverResponse;
+    }
+  }
+  return "";
 }
 
 bool prepareSIM800LForSendRequest(bool isTestMode) {
   String response = "";
-  if (!GsmModuleIsPreparedForSendRequest) {
-    //Включение режима GPRS
-    response += sendAtCommand(F("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\" "), true);
-    // //Настройка APN
-    // response += sendAtCommand(F("AT+SAPBR=3,1,\"APN\",\"internet\""), true);
-  }
-  //Включение активного потребления для подключение к интернету
+  response += sendAtCommand(F("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\" "), true);
   response += sendAtCommand(F("AT+SAPBR=1,1"), true);
-  //Инициализация HTTP канала
   response += sendAtCommand(F("AT+HTTPINIT"), true);
-  // //Включение режима поддержки SSL сертификата
-  //response += sendAtCommand(F("AT+HTTPSSL=1"), true);
-  //установка идентификатора HTTP канала
   response += sendAtCommand(F("AT+HTTPPARA=\"CID\",1"), true);
   response += sendAtCommand("AT+HTTPPARA=\"URL\",\"" + server + ":" + String(port) + GetRequestParams(isTestMode) + "\"", true);
   if (response.indexOf(F("ERROR")) == -1) {
@@ -190,36 +209,35 @@ bool prepareSIM800LForSendRequest(bool isTestMode) {
 }
 
 String waitAtAnswer() {
-  int waitCount = 0;
-  while (!SIM800L.available()) {
-    if (waitCount > 400) {
-      Serial.println(F("Timeout"));
-      RestartGsmModule();
-      //Reboot();
+  String response = "";
+  do {
+    int waitCount = 0;
+    while (!SIM800L.available()) {
+      if (waitCount > 400) {
+        Serial.println(F("Timeout"));
+        RestartGsmModule();
+        return "";
+      }
+      delay(250);
+      waitCount++;
     }
-    delay(250);
-    waitCount++;
-  }
-  //delay(100);
-  String response = SIM800L.readString();
-  Serial.println(response);
-  if (response.indexOf(F("OK")) == -1 && IsGsmGarbage(response))
-    response = waitAtAnswer();
-  while (response.length() > 0 && (response.substring(0, 1) == F("\r") || response.substring(0, 1) == F("\n")))
-    return response;
+    response = SIM800L.readString();
+    Serial.println(response);
+  } while (response.indexOf(F("OK")) == -1 && IsGsmGarbage(response));
+  return response;
 }
 
 bool IsGsmGarbage(String text) {
-  return (text.indexOf(F("Ready" )) >= 0 || 
-          text.indexOf(F("Call"  )) >= 0 || 
-          text.indexOf(F("RDY"   )) >= 0 || 
-          text.indexOf(F("SMS"   )) >= 0 || 
-          text.indexOf(F("CMTI"  )) >= 0 || 
-          text.indexOf(F("CME"   )) >= 0 || 
-          text.indexOf(F("CPIN"  )) >= 0 || 
-          text.indexOf(F("CFUN"  )) >= 0 || 
-          text.indexOf(F("DST"   )) >= 0 || 
-          text.indexOf(F("CTZV"  )) >= 0 || 
+  return (text.indexOf(F("Ready" )) >= 0 ||
+          text.indexOf(F("Call"  )) >= 0 ||
+          text.indexOf(F("RDY"   )) >= 0 ||
+          text.indexOf(F("SMS"   )) >= 0 ||
+          text.indexOf(F("CMTI"  )) >= 0 ||
+          text.indexOf(F("CME"   )) >= 0 ||
+          text.indexOf(F("CPIN"  )) >= 0 ||
+          text.indexOf(F("CFUN"  )) >= 0 ||
+          text.indexOf(F("DST"   )) >= 0 ||
+          text.indexOf(F("CTZV"  )) >= 0 ||
           text.indexOf(F("PSUTTZ")) >= 0);
 }
 

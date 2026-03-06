@@ -1,10 +1,8 @@
-volatile bool flag200ms = false;
-volatile uint16_t counter = 0;      // будем считать срабатывания
 volatile uint16_t next_ocr = 1561;  // Начальный для 100 мс: ((16e6 / 1024 / 1000) * 100) - 1 ≈ 1561
 
-bool tick(unsigned long &lastTickTime, int millisInterval) {
+bool tick(unsigned long &lastTickTime, unsigned long millisInterval) {
   if (millis() < lastTickTime) {
-    if (millis() + (4294967295 - lastTickTime) > millisInterval) { /* 4294967295 - Максимальное значение millis(), после которого оно сбрасывается к нулю*/
+    if (millis() + (4294967295UL - lastTickTime) > millisInterval) { /* 4294967295 - Максимальное значение millis(), после которого оно сбрасывается к нулю*/
       lastTickTime = millis();
       return true;
     }

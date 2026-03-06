@@ -1,7 +1,5 @@
 #include <avr/wdt.h>
 #include <SoftwareSerial.h>
-#define TINY_GSM_MODEM_SIM800  // Обязательно перед TinyGsmClient.h. Иначе библиотека будет ругаться
-#include <TinyGsmClient.h>
 
 #pragma region GsmModule
 
@@ -11,10 +9,9 @@
 #define MODEM_BAUD 19200
 
 unsigned long SendRequestLastTickTime = 0;
-int SendRequestWorkInterval = 2000;
+const unsigned long SendRequestWorkInterval = 2000;
 
 volatile bool NeedForSendRequest = false;
-volatile bool RequestSent = false ;
 
 #pragma endregion
 
@@ -23,19 +20,18 @@ volatile bool RequestSent = false ;
 #define TestButtonPin 3
 #define MuteButtonPin 2
 #define BuzzerPin 13
-#define AliveLedPin A1
-#define AlertLedPin A3
+#define AliveLedPin 5
+#define AlertLedPin 4
 
 unsigned long AliveIndicatorLastTickTime = 0;
-const int AliveIndicatorWorkInterval = 5000;
+const unsigned long AliveIndicatorWorkInterval = 5000;
 
 unsigned long WatchDogResetLastTickTime = 0;
-const int WatchDogResetWorkInterval = 4000;
+const unsigned long WatchDogResetWorkInterval = 4000;
 
-unsigned long SignalSwitchLastTickTime = 0;
 int SignalSwitchWorkInterval = 200;
 
-const int ResetInterval = 3600000;
+const unsigned long ResetInterval = 3600000UL;
 
 volatile bool Mute = false;      // Нажата кнопка молчания
 bool AlertIsActive = false;      // Режим тревоги
@@ -45,12 +41,20 @@ bool TestAlertIsActive = false;  // Режим теста
 
 #pragma region GasAnalyser
 
-#define FigaroAnalogPin A6 // Аналоговый пин Figaro
-int CoThreshold = 350;
-unsigned long GasAnalyseLastTickTime = 0;
-int GasAnalyseWorkInterval = 0;
+#define FigaroAnalogPin A2 // Аналоговый пин Figaro
 
-bool COHasHighConcentration = false;  // Высокая концентрация Угарного газа
+// Thresholds
+int LedTreshold = 200;
+int BuzzerThreshold = 300;
+int SendRequestThreshold = 400;
+int HysteresisOffset = 50;
+
+bool BuzzerAlertIsActive = false;       // Гистерезис зуммера
+bool SendRequestAlertIsActive = false;  // Гистерезис отправки запроса
+
+unsigned long GasAnalyseLastTickTime = 0;
+const unsigned long GasAnalyseWorkInterval = 0;
+
 bool PlotterMode = true;              // Выводим значения в гравик //FORTEST
 bool Preparing = true;                // Выводим значения в гравик //FORTEST
 
@@ -84,7 +88,7 @@ void setup() {
   analogReference(EXTERNAL);
 
   //Подготовка и подключение Serial-порта
-  PrepareSerialPorts();
+  PrepareSerialPorts(); 
 
   // вывести из-за чего перезагрузилась arduino
   PrintResetCause();
@@ -126,7 +130,7 @@ void loop() {
     wdt_reset();
   }
   // Перезагрузка каждый час
-  if (millis() > ResetInterval & !AlertIsActive & !TestAlertIsActive) {
+  if (millis() > ResetInterval && !AlertIsActive && !TestAlertIsActive) {
     RestartGsmModule();
     Reboot();
   }

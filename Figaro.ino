@@ -2,37 +2,49 @@ void PrepareGasAnalyser() {
 }
 
 void GasAnalyse() {
-  int figaroAnalogValue = 0;
-  for (int i = 0; i < 5; i++) {
+  float figaroAnalogValue = 0.0;
+  for (int i = 0; i < 100; i++) {
     figaroAnalogValue += analogRead(FigaroAnalogPin);
-    delay(100);
+    delay(10);
   }
-  figaroAnalogValue = figaroAnalogValue / 5.0;
-  float COConcentration = (figaroAnalogValue * (3.8 / 1023.0) * 1000) / 3.8;
+  figaroAnalogValue = figaroAnalogValue / 100.0;
+  figaroAnalogValue = (figaroAnalogValue / 1024) * 1000;
 
-  if (COConcentration > 50) {
-    COConcentration += 300;
-  }
-
-  // Проверяем превышение порога
-  COHasHighConcentration = COConcentration >= CoThreshold;
+  COConcentration = figaroAnalogValue;
 
   if (PlotterMode) {
     Serial.print("CO:");
-    if (COConcentration < 350) {
-      Serial.println("<350");
-    } 
-    else if (COConcentration > 1000) {
-      Serial.println(">1000");
-    }
-    else {
-      Serial.println(COConcentration);
-    }
+    Serial.println(figaroAnalogValue);
   }
 
   if (!TestAlertIsActive) {
-    AlertIsActive = COHasHighConcentration;
-    // if (!NeedForSendRequest)
-      // NeedForSendRequest = COHasHighConcentration;
+    // Гистерезис LED: ON >= 200, OFF < 150
+    if (!AlertIsActive) {
+      if (figaroAnalogValue >= LedTreshold)
+        AlertIsActive = true;
+    } else {
+      if (figaroAnalogValue < LedTreshold - HysteresisOffset)
+        AlertIsActive = false;
+    }
+
+    // Гистерезис зуммера: ON >= 300, OFF < 250
+    if (!BuzzerAlertIsActive) {
+      if (figaroAnalogValue >= BuzzerThreshold)
+        BuzzerAlertIsActive = true;
+    } else {
+      if (figaroAnalogValue < BuzzerThreshold - HysteresisOffset)
+        BuzzerAlertIsActive = false;
+    }
+
+    // Гистерезис отправки: ON >= 400, OFF < 350
+    // if (!SendRequestAlertIsActive) {
+    //   if (figaroAnalogValue >= SendRequestThreshold) {
+    //     SendRequestAlertIsActive = true;
+    //     NeedForSendRequest = true;
+    //   }
+    // } else {
+    //   if (figaroAnalogValue < SendRequestThreshold - HysteresisOffset)
+    //     SendRequestAlertIsActive = false;
+    // }
   }
 }

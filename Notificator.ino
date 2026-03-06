@@ -1,10 +1,5 @@
 volatile int SosSignalStep = 0;
-int SosSignalSalentTime = 0;
-int SosSignalSoundTime = 0;
 const int SosMinInterval = 100;
-
-short SosSignalPosX = 0;
-short SosSignalPosY = 0;
 short SosCyclesCount = 0;
 
 void GenerateSosSignal() {
@@ -21,8 +16,9 @@ void GenerateSosSignal() {
         if(SosCyclesCount > 30){
           TestAlertIsActive = false;
           AlertIsActive = false;
+          SosCyclesCount = 0;
         }
-      }        
+      }
     } else if (SosSignalStep == 5 || SosSignalStep == 7 || SosSignalStep == 9 || SosSignalStep == 11) {
       SetBuzzerState(0);
       SignalSwitchWorkInterval = SosMinInterval * 2;
@@ -52,8 +48,9 @@ void GenerateSosSignal() {
 }
 
 void SetBuzzerState(bool activate) {
-  digitalWrite(AlertLedPin, activate);
-  if (!Mute)
+  if (AlertIsActive || TestAlertIsActive)
+    digitalWrite(AlertLedPin, activate);
+  if (!Mute && (BuzzerAlertIsActive || TestAlertIsActive))
     digitalWrite(BuzzerPin, activate);
   else
     digitalWrite(BuzzerPin, LOW);
