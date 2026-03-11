@@ -29,6 +29,8 @@ const unsigned long AliveIndicatorWorkInterval = 5000;
 unsigned long WatchDogResetLastTickTime = 0;
 const unsigned long WatchDogResetWorkInterval = 4000;
 
+unsigned long RebootLastTickTime = 0;
+
 int SignalSwitchWorkInterval = 200;
 
 const unsigned long ResetInterval = 3600000UL;
@@ -51,6 +53,11 @@ int HysteresisOffset = 50;
 
 bool BuzzerAlertIsActive = false;       // Гистерезис зуммера
 bool SendRequestAlertIsActive = false;  // Гистерезис отправки запроса
+
+const int AlertDebounceThreshold = 5;
+int LedDebounceCount         = 0;
+int BuzzerDebounceCount      = 0;
+int SendRequestDebounceCount = 0;
 
 unsigned long GasAnalyseLastTickTime = 0;
 const unsigned long GasAnalyseWorkInterval = 0;
@@ -129,8 +136,8 @@ void loop() {
   if (tick(WatchDogResetLastTickTime, WatchDogResetWorkInterval)) {
     wdt_reset();
   }
-  // Перезагрузка каждый час
-  if (millis() > ResetInterval && !AlertIsActive && !TestAlertIsActive) {
+  // Перезагрузка каждый час (tick корректно обрабатывает переполнение millis)
+  if (tick(RebootLastTickTime, ResetInterval) && !AlertIsActive && !TestAlertIsActive) {
     RestartGsmModule();
     Reboot();
   }
