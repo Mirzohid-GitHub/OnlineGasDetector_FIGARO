@@ -67,6 +67,49 @@ void SendRequest(bool isTestMode) {
   }
 }
 
+// Отправляет ping на сервер — сообщает что устройство живо.
+// Пропускается если идёт тревога или модуль занят.
+void SendPing() {
+  if (NeedForSendRequest || AlertIsActive || TestAlertIsActive) return;
+
+  ActivateGsmModulePower();
+  delay(2000);
+
+  bool isHaveSignal = false;
+  for (int i = 0; i < 10; i++) {
+    if (GetSignalLevel() > 0) {
+      isHaveSignal = true;
+      break;
+    }
+    delay(500);
+  }
+  if (!isHaveSignal) {
+    DeactivateGsmModulePower();
+    return;
+  }
+
+  bool ok = true;
+  if (!isAtResponseOk(sendAtCommand(F("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\" "), true))) ok = false;
+  if (ok && !isAtResponseOk(sendAtCommand(F("AT+SAPBR=1,1"), true))) ok = false;
+  if (ok && !isAtResponseOk(sendAtCommand(F("AT+HTTPINIT"), true))) ok = false;
+  if (ok && !isAtResponseOk(sendAtCommand(F("AT+HTTPPARA=\"CID\",1"), true))) ok = false;
+
+  if (ok) {
+    char urlCmd[80];
+    snprintf(urlCmd, sizeof(urlCmd),
+      "AT+HTTPPARA=\"URL\",\"%s:%d/dev/ping?device_id=%s\"",
+      server.c_str(), port, deviceId.c_str());
+    if (isAtResponseOk(sendAtCommand(String(urlCmd), true))) {
+      sendAtCommand(F("AT+HTTPACTION=0"), true);
+      waitAtAnswer();
+    }
+  }
+
+  sendAtCommand(F("AT+HTTPTERM"), true);
+  sendAtCommand(F("AT+SAPBR=0,1"), true);
+  DeactivateGsmModulePower();
+}
+
 // Устанавливает SMS режим. Вызывается один раз перед группой отправок,
 // а также повторно при каждом ретрае.
 bool InitSmsMode() {

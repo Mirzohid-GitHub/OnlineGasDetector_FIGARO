@@ -11,6 +11,10 @@
 unsigned long SendRequestLastTickTime = 0;
 const unsigned long SendRequestWorkInterval = 2000;
 
+unsigned long PingLastTickTime = 0;
+const unsigned long PingWorkInterval = 300000UL; // 5 минут
+// const unsigned long PingWorkInterval = 60000UL; // 1 минут
+
 volatile bool NeedForSendRequest = false;
 
 #pragma endregion
@@ -121,6 +125,10 @@ void loop() {
   //Отправка запроса
   if (tick(SendRequestLastTickTime, SendRequestWorkInterval)) {
     SendRequest(TestAlertIsActive);
+  }
+  // Пинг сервера каждую минуту (только вне режима тревоги)
+  if (tick(PingLastTickTime, PingWorkInterval)) {
+    SendPing();
   }
   //Маргаем индикатором рабочего режима
   if (tick(AliveIndicatorLastTickTime, AliveIndicatorWorkInterval) && !AlertIsActive) {
