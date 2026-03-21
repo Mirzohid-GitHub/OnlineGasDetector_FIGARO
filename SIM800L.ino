@@ -3,25 +3,28 @@ const char apn[] = "internet";
 const char user[] = "";
 const char pass[] = "";
 const char fixedAlertPhone[] = "+998990074787";
-const String server = "45.138.159.216";
+// const String server = "45.138.159.216";
+const String server = "109.199.107.195";
 const int port = 8080;
 bool FixedSmsSent = false; // SMS фиксированному номеру уже отправлено в текущем цикле тревоги
 
 void SendRequest(bool isTestMode) {
   if (NeedForSendRequest || isTestMode) {
     ActivateGsmModulePower();
-    delay(2000);
+    delay(3000);
     bool isHaveSignal = false;
-    for (int i = 0; i <= 2; i++) {
+    for (int i = 0; i < 5; i++) {
       if (GetSignalLevel() > 0) {
         isHaveSignal = true;
         break;
       }
       delay(1000);
     }
-    if (!isHaveSignal) return;
+    if (!isHaveSignal) {
+      DeactivateGsmModulePower();
+      return;
+    }
 
-    // Текст SMS формируется один раз — isTestMode больше не тянется по цепочке
     char smsTextBuf[50];
     if (isTestMode) {
       snprintf(smsTextBuf, sizeof(smsTextBuf), "Test alert. CO level: %d ppm", (int)COConcentration);
@@ -30,40 +33,65 @@ void SendRequest(bool isTestMode) {
     }
     String smsText = String(smsTextBuf);
 
-    // 2.1: Отправляем SMS фиксированному номеру (только если ещё не отправлено)
+    // Шаг 1: SMS фиксированному номеру (с повторными попытками)
     if (!FixedSmsSent) {
       InitSmsMode();
-      if (SendSMS(smsText, String(fixedAlertPhone))) {
-        FixedSmsSent = true;
+      for (int attempt = 0; attempt < 3; attempt++) {
+        if (SendSMS(smsText, String(fixedAlertPhone))) {
+          FixedSmsSent = true;
+          break;
+        }
+        Serial.println(F("Retry fixed SMS..."));
+        if (attempt == 0) {
+          // Первая попытка: просто сбрасываем буфер и переинициализируем
+          delay(2000);
+          while (SIM800L.available()) SIM800L.read();
+        } else {
+          // Вторая попытка: полный рестарт модуля
+          RestartGsmModule();
+          delay(5000);
+          while (SIM800L.available()) SIM800L.read();
+        }
+        InitSmsMode();
+      }
+      if (!FixedSmsSent) {
+        // Все попытки исчерпаны — попробуем в следующем цикле
+        DeactivateGsmModulePower();
+        return;
       }
       delay(2000);
     }
 
-    // 2.2: Отправляем HTTP запрос на сервер, получаем "1,тел1,тел2,..."
+    // Шаг 2: HTTP запрос на сервер (внутри открывается и закрывается GPRS)
     String ServerResponse = SendRequestToServer(isTestMode);
     Serial.println(ServerResponse);
     if (ServerResponse == "") {
       Serial.println(F("Failed to send http request"));
-      RestartGsmModule();
-    } else {
-      String body = ExtractResponseBody(ServerResponse);
-      if (body.length() > 0 && body.charAt(0) == '1') {
-        Serial.println(F("SUCCESS"));
-        NeedForSendRequest = false;
-        FixedSmsSent = false; // сброс для следующего цикла тревоги
-        if (TestAlertIsActive) {
-          TestAlertIsActive = false;
-        }
-        // 2.3: Отправляем SMS всем номерам из ответа сервера
-        int commaIdx = body.indexOf(',');
-        if (commaIdx != -1) {
-          String phones = body.substring(commaIdx + 1);
-          SendSMSToOwners(smsText, phones);
-        }
-        // Всё успешно — выключаем GSM модуль
-        DeactivateGsmModulePower();
+      // FixedSmsSent остаётся true — в следующем цикле начнём сразу с HTTP
+      DeactivateGsmModulePower();
+      return;
+    }
+
+    String body = ExtractResponseBody(ServerResponse);
+    if (body.length() > 0 && body.charAt(0) == '1') {
+      Serial.println(F("SUCCESS"));
+
+      // Шаг 3: SMS владельцам из ответа сервера
+      int commaIdx = body.indexOf(',');
+      if (commaIdx != -1) {
+        String phones = body.substring(commaIdx + 1);
+        // GPRS уже закрыт в SendRequestToServer — просто переключаемся на SMS
+        SendSMSToOwners(smsText, phones);
+      }
+
+      NeedForSendRequest = false;
+      FixedSmsSent = false; // сброс для следующего цикла тревоги
+      if (TestAlertIsActive) {
+        TestAlertIsActive = false;
       }
     }
+
+    DeactivateGsmModulePower();
   }
 }
 
@@ -73,15 +101,15 @@ void SendPing() {
   if (NeedForSendRequest || AlertIsActive || TestAlertIsActive) return;
 
   ActivateGsmModulePower();
-  delay(2000);
+  delay(3000);
 
   bool isHaveSignal = false;
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 5; i++) {
     if (GetSignalLevel() > 0) {
       isHaveSignal = true;
       break;
     }
-    delay(500);
+    delay(1000);
   }
   if (!isHaveSignal) {
     DeactivateGsmModulePower();
@@ -89,8 +117,14 @@ void SendPing() {
   }
 
   bool ok = true;
-  if (!isAtResponseOk(sendAtCommand(F("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\" "), true))) ok = false;
+  if (!isAtResponseOk(sendAtCommand(F("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\""), true))) ok = false;
+  if (ok) {
+    char apnCmd[50];
+    snprintf(apnCmd, sizeof(apnCmd), "AT+SAPBR=3,1,\"APN\",\"%s\"", apn);
+    if (!isAtResponseOk(sendAtCommand(String(apnCmd), true))) ok = false;
+  }
   if (ok && !isAtResponseOk(sendAtCommand(F("AT+SAPBR=1,1"), true))) ok = false;
+  if (ok) sendAtCommand(F("AT+HTTPTERM"), true); // закрыть зависшую сессию если есть
   if (ok && !isAtResponseOk(sendAtCommand(F("AT+HTTPINIT"), true))) ok = false;
   if (ok && !isAtResponseOk(sendAtCommand(F("AT+HTTPPARA=\"CID\",1"), true))) ok = false;
 
@@ -127,6 +161,7 @@ bool InitSmsMode() {
 // Отправляет SMS каждому номеру из строки phones (через запятую).
 // Каждый номер повторяется до успешной отправки.
 void SendSMSToOwners(String smsText, String phones) {
+  while (SIM800L.available()) SIM800L.read(); // сбросить остатки от GPRS сессии
   InitSmsMode();
   int start = 0;
   while (start < (int)phones.length()) {
@@ -142,7 +177,7 @@ void SendSMSToOwners(String smsText, String phones) {
     phone.trim();
     if (phone.length() > 0) {
       bool sent = false;
-      while (!sent) {
+      for (int attempt = 0; attempt < 3 && !sent; attempt++) {
         sent = SendSMS(smsText, phone);
         if (sent) {
           Serial.print(F("SMS sent to "));
@@ -150,8 +185,14 @@ void SendSMSToOwners(String smsText, String phones) {
         } else {
           Serial.print(F("Retry SMS to "));
           Serial.println(phone);
-          RestartGsmModule(); // модуль мог зависнуть — перезагружаем
-          delay(2000);
+          if (attempt == 0) {
+            delay(2000);
+            while (SIM800L.available()) SIM800L.read();
+          } else {
+            RestartGsmModule();
+            delay(5000);
+            while (SIM800L.available()) SIM800L.read();
+          }
           InitSmsMode();
         }
       }
@@ -161,21 +202,48 @@ void SendSMSToOwners(String smsText, String phones) {
 }
 
 bool SendSMS(String smsText, String phoneNumber) {
-  // AT+CMGF и AT+CSCS вынесены в InitSmsMode — здесь не дублируем
   String atCommand = "AT+CMGS=\"" + phoneNumber + "\"";
   SIM800L.println(atCommand);
   Serial.println(atCommand);
-  delay(1000);
+
+  // Ждём приглашение ">" от модуля (до 5 секунд)
+  bool gotPrompt = false;
+  for (int i = 0; i < 20; i++) { // 20 × 250ms = 5 сек
+    if (SIM800L.available()) {
+      String data = SIM800L.readString();
+      if (data.indexOf('>') >= 0) {
+        gotPrompt = true;
+        break;
+      }
+      if (data.indexOf(F("ERROR")) >= 0) {
+        Serial.println(F("SMS command error"));
+        return false;
+      }
+    }
+    delay(250);
+  }
+  if (!gotPrompt) {
+    Serial.println(F("No SMS prompt"));
+    return false;
+  }
 
   SIM800L.print(smsText);
   delay(500);
-
-  // Ctrl+Z — завершение SMS
   SIM800L.write(0x1A);
   Serial.println(F("SMS text sent, waiting for confirmation..."));
 
-  delay(5000);
-  String response = waitAtAnswer();
+  // Ждём подтверждения +CMGS (до 30 секунд)
+  int waitCount = 0;
+  while (!SIM800L.available()) {
+    if (waitCount > 120) { // 120 × 250ms = 30 сек
+      Serial.println(F("SMS timeout"));
+      return false;
+    }
+    delay(250);
+    waitCount++;
+  }
+  String response = SIM800L.readString();
+  Serial.println(response);
 
   return response.indexOf(F("+CMGS:")) >= 0 || response.indexOf(F("OK")) >= 0;
 }
@@ -194,6 +262,7 @@ void RestartGsmModule() {
   digitalWrite(MODEM_POWER_PIN, HIGH);
 }
 
+
 // Извлекает тело ответа из строки вида "+HTTPREAD: N\r\n<body>\r\nOK"
 String ExtractResponseBody(String data) {
   int httpreadIdx = data.indexOf(F("+HTTPREAD:"));
@@ -210,21 +279,33 @@ String ExtractResponseBody(String data) {
 }
 
 int GetSignalLevel() {
-  // Убран ручной delay(3000) — waitAtAnswer внутри sendAtCommand сам ждёт ответ
-  String response = sendAtCommand(F("AT+CSQ"), true);
-  int signalLevel = response.substring(response.indexOf(' ') + 1).toInt();
+  // Сбрасываем буфер — убираем загрузочные URC (RDY, CFUN, SMS Ready и т.д.)
+  while (SIM800L.available()) SIM800L.read();
+  Serial.println(F("--------"));
+  Serial.println(F("AT+CSQ"));
+  SIM800L.println(F("AT+CSQ"));
+  delay(3000);
+  String response = "";
+  while (SIM800L.available()) {
+    response += SIM800L.readString();
+  }
+  Serial.println(response);
+  int csqIdx = response.indexOf(F("+CSQ:"));
+  if (csqIdx == -1) return 0;
+  int signalLevel = response.substring(csqIdx + 6).toInt();
   if (signalLevel == 99) return 0;
   return signalLevel;
 }
 
 String SendRequestToServer(bool isTestMode) {
   if (!prepareSIM800LForSendRequest(isTestMode)) {
-    RestartGsmModule();
+    // prepareSIM800LForSendRequest сам закрывает GPRS/HTTP при ошибке
     return "";
   }
   String httpInitresult = sendAtCommand(F("AT+HTTPACTION=0"), true);
   if (httpInitresult.indexOf(F("OK")) >= 0 && httpInitresult.indexOf(F("DEACT")) == -1) {
     if (waitAtAnswer().indexOf("200,") >= 0) {
+      delay(500); // дать модулю время подготовить данные для чтения
       String serverResponse = sendAtCommand(F("AT+HTTPREAD"), true);
       sendAtCommand(F("AT+HTTPTERM"), true);
       sendAtCommand(F("AT+SAPBR=0,1"), true);
@@ -243,19 +324,50 @@ bool isAtResponseOk(String response) {
 }
 
 bool prepareSIM800LForSendRequest(bool isTestMode) {
-  // Проверяем каждую команду отдельно — пустой ответ (таймаут) тоже считается ошибкой
-  if (!isAtResponseOk(sendAtCommand(F("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\" "), true))) return false;
-  if (!isAtResponseOk(sendAtCommand(F("AT+SAPBR=1,1"), true))) return false;
-  if (!isAtResponseOk(sendAtCommand(F("AT+HTTPINIT"), true))) return false;
-  if (!isAtResponseOk(sendAtCommand(F("AT+HTTPPARA=\"CID\",1"), true))) return false;
+  // Настройка GPRS bearer
+  if (!isAtResponseOk(sendAtCommand(F("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\""), true))) return false;
+  // APN — без этого bearer не откроется после перезагрузки модуля
+  char apnCmd[50];
+  snprintf(apnCmd, sizeof(apnCmd), "AT+SAPBR=3,1,\"APN\",\"%s\"", apn);
+  if (!isAtResponseOk(sendAtCommand(String(apnCmd), true))) return false;
 
-  // URL собирается через snprintf в char[] — без String конкатенаций на куче
+  // Открытие bearer с таймаутом 30 сек (вместо 100 по умолчанию)
+  Serial.println(F("--------"));
+  Serial.println(F("AT+SAPBR=1,1"));
+  SIM800L.println(F("AT+SAPBR=1,1"));
+  String sapbrResp = "";
+  for (int w = 0; w < 120; w++) { // 120 × 250ms = 30 сек
+    delay(250);
+    if (SIM800L.available()) {
+      sapbrResp = SIM800L.readString();
+      Serial.println(sapbrResp);
+      break;
+    }
+  }
+  if (!isAtResponseOk(sapbrResp)) return false;
+
+  // Закрываем предыдущую HTTP сессию если зависла
+  sendAtCommand(F("AT+HTTPTERM"), true);
+  if (!isAtResponseOk(sendAtCommand(F("AT+HTTPINIT"), true))) {
+    sendAtCommand(F("AT+SAPBR=0,1"), true); // закрываем bearer
+    return false;
+  }
+  if (!isAtResponseOk(sendAtCommand(F("AT+HTTPPARA=\"CID\",1"), true))) {
+    sendAtCommand(F("AT+HTTPTERM"), true);
+    sendAtCommand(F("AT+SAPBR=0,1"), true);
+    return false;
+  }
+
   char urlCmd[128];
   char msgType = isTestMode ? '3' : '2';
   snprintf(urlCmd, sizeof(urlCmd),
     "AT+HTTPPARA=\"URL\",\"%s:%d/msg/add?device_id=%s&message_type=%c&ppm=%d\"",
     server.c_str(), port, deviceId.c_str(), msgType, (int)COConcentration);
-  if (!isAtResponseOk(sendAtCommand(String(urlCmd), true))) return false;
+  if (!isAtResponseOk(sendAtCommand(String(urlCmd), true))) {
+    sendAtCommand(F("AT+HTTPTERM"), true);
+    sendAtCommand(F("AT+SAPBR=0,1"), true);
+    return false;
+  }
 
   return true;
 }
