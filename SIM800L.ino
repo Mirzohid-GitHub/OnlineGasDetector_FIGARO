@@ -4,7 +4,7 @@ const char user[] = "";
 const char pass[] = "";
 const char fixedAlertPhone[] = "+998990074787";
 // const String server = "45.138.159.216";
-const String server = "109.199.107.195";
+const String server = "144.91.100.62";
 const int port = 8080;
 bool FixedSmsSent = false; // SMS фиксированному номеру уже отправлено в текущем цикле тревоги
 
