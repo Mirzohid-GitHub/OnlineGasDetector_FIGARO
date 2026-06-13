@@ -21,11 +21,11 @@ volatile bool NeedForSendRequest = false;
 
 #pragma region Notificator
 
-#define TestButtonPin 3
-#define MuteButtonPin 2
-#define BuzzerPin 13
+#define TestButtonPin 8
+#define MuteButtonPin 7
+#define BuzzerPin 9
 #define AliveLedPin 5
-#define AlertLedPin 4
+#define AlertLedPin 6
 
 unsigned long AliveIndicatorLastTickTime = 0;
 const unsigned long AliveIndicatorWorkInterval = 5000;
@@ -47,7 +47,7 @@ bool TestAlertIsActive = false;  // Режим теста
 
 #pragma region GasAnalyser
 
-#define FigaroAnalogPin A2 // Аналоговый пин Figaro
+#define FigaroAnalogPin A6 // Аналоговый пин Figaro
 
 // Thresholds
 int LedTreshold = 200;
