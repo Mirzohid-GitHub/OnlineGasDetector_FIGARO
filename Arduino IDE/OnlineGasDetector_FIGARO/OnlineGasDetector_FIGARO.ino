@@ -3,9 +3,9 @@
 
 #pragma region GsmModule
 
-#define MODEM_RX 10
-#define MODEM_TX 11
-#define MODEM_POWER_PIN  12
+#define MODEM_RX 11
+#define MODEM_TX 10
+#define MODEM_POWER_PIN  9
 #define MODEM_BAUD 19200
 
 unsigned long SendRequestLastTickTime = 0;
@@ -21,11 +21,11 @@ volatile bool NeedForSendRequest = false;
 
 #pragma region Notificator
 
-#define TestButtonPin 8
-#define MuteButtonPin 7
-#define BuzzerPin 9
+#define TestButtonPin 3
+#define MuteButtonPin 2
+#define BuzzerPin 13
 #define AliveLedPin 5
-#define AlertLedPin 6
+#define AlertLedPin 7
 
 unsigned long AliveIndicatorLastTickTime = 0;
 const unsigned long AliveIndicatorWorkInterval = 5000;
@@ -96,7 +96,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(TestButtonPin), TestButtonPressEvent, FALLING);
 
   //Задаем режим опорного напряжения
-  analogReference(EXTERNAL);
+  //analogReference(EXTERNAL);
 
   //Подготовка и подключение Serial-порта
   PrepareSerialPorts(); 

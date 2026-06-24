@@ -9,8 +9,8 @@ void GasAnalyse() {
   }
   figaroAnalogValue = figaroAnalogValue / 100.0;
   figaroAnalogValue = (figaroAnalogValue / 1024) * 1000;
-
-  if (figaroAnalogValue < 20.0) {
+  figaroAnalogValue = (figaroAnalogValue / 750) * 1000;
+  if (figaroAnalogValue < 20.0) {      
     figaroAnalogValue = 0.0;
   }
 
