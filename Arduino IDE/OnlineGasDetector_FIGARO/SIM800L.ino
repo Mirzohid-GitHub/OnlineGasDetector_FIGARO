@@ -2,7 +2,7 @@
 const char apn[] = "internet";
 const char user[] = "";
 const char pass[] = "";
-const char fixedAlertPhone[] = "+998990074787";
+const char fixedAlertPhone[] = "+998999070321";
 // const String server = "45.138.159.216";
 const String server = "144.91.100.62";
 const int port = 8080;

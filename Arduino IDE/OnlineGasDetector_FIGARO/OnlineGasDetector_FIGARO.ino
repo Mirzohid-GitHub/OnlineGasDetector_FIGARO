@@ -11,9 +11,8 @@
 unsigned long SendRequestLastTickTime = 0;
 const unsigned long SendRequestWorkInterval = 2000;
 
-unsigned long PingLastTickTime = 0;
+unsigned long PingLastTickTime = 300000;
 const unsigned long PingWorkInterval = 300000UL; // 5 минут
-// const unsigned long PingWorkInterval = 60000UL; // 1 минут
 
 volatile bool NeedForSendRequest = false;
 
@@ -96,7 +95,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(TestButtonPin), TestButtonPressEvent, FALLING);
 
   //Задаем режим опорного напряжения
-  //analogReference(EXTERNAL);
+  analogReference(EXTERNAL);
 
   //Подготовка и подключение Serial-порта
   PrepareSerialPorts(); 
@@ -128,7 +127,7 @@ void loop() {
   }
   // Пинг сервера каждую минуту (только вне режима тревоги)
   if (tick(PingLastTickTime, PingWorkInterval)) {
-    SendPing();
+    //SendPing();
   }
   //Маргаем индикатором рабочего режима
   if (tick(AliveIndicatorLastTickTime, AliveIndicatorWorkInterval) && !AlertIsActive) {
