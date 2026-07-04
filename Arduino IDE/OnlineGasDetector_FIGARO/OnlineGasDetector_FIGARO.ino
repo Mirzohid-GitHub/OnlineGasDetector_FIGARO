@@ -15,6 +15,7 @@ unsigned long PingLastTickTime = 300000;
 const unsigned long PingWorkInterval = 300000UL; // 5 минут
 
 volatile bool NeedForSendRequest = false;
+bool GsmPowerIsOn = false;
 
 #pragma endregion
 
@@ -41,6 +42,9 @@ const unsigned long ResetInterval = 3600000UL;
 volatile bool Mute = false;      // Нажата кнопка молчания
 bool AlertIsActive = false;      // Режим тревоги
 bool TestAlertIsActive = false;  // Режим теста
+bool ManualBuzzerIsOn = false;
+bool ManualAlertLedIsOn = false;
+bool ManualAliveLedIsOn = false;
 
 #pragma endregion
 
@@ -49,6 +53,7 @@ bool TestAlertIsActive = false;  // Режим теста
 #define FigaroAnalogPin A6 // Аналоговый пин Figaro
 
 // Thresholds
+int LedTreshold = 300;
 int BuzzerThreshold = 300;
 int SendRequestThreshold = 400;
 int HysteresisOffset = 50;
@@ -57,6 +62,7 @@ bool BuzzerAlertIsActive = false;       // Гистерезис зуммера
 bool SendRequestAlertIsActive = false;  // Гистерезис отправки запроса
 
 const int AlertDebounceThreshold = 5;
+int LedDebounceCount         = 0;
 int BuzzerDebounceCount      = 0;
 int SendRequestDebounceCount = 0;
 
@@ -115,6 +121,8 @@ void setup() {
 }
 
 void loop() {
+  ProcessSerialCommands();
+
   //Снимаем показания датчика
   if (tick(GasAnalyseLastTickTime, GasAnalyseWorkInterval)) {
     GasAnalyse();
@@ -128,7 +136,7 @@ void loop() {
     //SendPing();
   }
   //Маргаем индикатором рабочего режима
-  if (tick(AliveIndicatorLastTickTime, AliveIndicatorWorkInterval) && !AlertIsActive) {
+  if (tick(AliveIndicatorLastTickTime, AliveIndicatorWorkInterval) && !AlertIsActive && !ManualAliveLedIsOn) {
       digitalWrite(AliveLedPin, HIGH);
       delay(50);
       digitalWrite(AliveLedPin, LOW);

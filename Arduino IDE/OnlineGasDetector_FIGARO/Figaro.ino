@@ -25,6 +25,19 @@ void GasAnalyse() {
   }
 
   if (!TestAlertIsActive) {
+    if (!AlertIsActive) {
+      if (filteredValue >= LedTreshold) {
+        LedDebounceCount++;
+        if (LedDebounceCount >= AlertDebounceThreshold)
+          AlertIsActive = true;
+      } else {
+        LedDebounceCount = 0;
+      }
+    } else {
+      if (filteredValue < LedTreshold - HysteresisOffset)
+        AlertIsActive = false;
+    }
+
     if (!BuzzerAlertIsActive) {
       if (filteredValue >= BuzzerThreshold) {
         BuzzerDebounceCount++;
@@ -37,7 +50,6 @@ void GasAnalyse() {
       if (filteredValue < BuzzerThreshold - HysteresisOffset)
         BuzzerAlertIsActive = false;
     }
-    AlertIsActive = BuzzerAlertIsActive;
 
     // Request alert hysteresis: ON >= 400, OFF < 350
     // if (!SendRequestAlertIsActive) {

@@ -260,16 +260,20 @@ bool SendSMS(String smsText, String phoneNumber) {
 
 void ActivateGsmModulePower() {
   digitalWrite(MODEM_POWER_PIN, HIGH);
+  GsmPowerIsOn = true;
 }
 
 void DeactivateGsmModulePower() {
   digitalWrite(MODEM_POWER_PIN, LOW);
+  GsmPowerIsOn = false;
 }
 
 void RestartGsmModule() {
   digitalWrite(MODEM_POWER_PIN, LOW);
+  GsmPowerIsOn = false;
   delay(1000);
   digitalWrite(MODEM_POWER_PIN, HIGH);
+  GsmPowerIsOn = true;
 }
 
 
