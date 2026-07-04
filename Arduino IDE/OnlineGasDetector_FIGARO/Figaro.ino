@@ -1,4 +1,4 @@
-const float alpha = 0.5f;
+const float alpha = 0.1f;
 float filteredValue = 0.0f;
 
 void PrepareGasAnalyser() {
@@ -7,11 +7,11 @@ void PrepareGasAnalyser() {
 void GasAnalyse() {
   float figaroAnalogValue = 0.0;
 
-  for (int i = 0; i < 50; i++) {
+  for (int i = 0; i < 150; i++) {
     figaroAnalogValue += analogRead(FigaroAnalogPin);
     delay(10);
   }
-  figaroAnalogValue = figaroAnalogValue / 50.0;
+  figaroAnalogValue = figaroAnalogValue / 150.0;
   figaroAnalogValue = (figaroAnalogValue / 1024.0) * 1000.0;
   //figaroAnalogValue = (figaroAnalogValue / 750.0) * 1000.0;
 
@@ -19,8 +19,8 @@ void GasAnalyse() {
 
   COConcentration = filteredValue;
 
-  if (PlotterMode && (!AlertIsActive || !TestAlertIsActive)) {
-    // Serial.print("CO:");
+  if (PlotterMode) {
+  //if (PlotterMode && !AlertIsActive && !TestAlertIsActive) {
     Serial.println(filteredValue);
   }
 
