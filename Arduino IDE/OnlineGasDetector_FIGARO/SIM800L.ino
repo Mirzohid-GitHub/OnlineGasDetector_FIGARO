@@ -209,6 +209,7 @@ bool SendSMS(String smsText, String phoneNumber) {
   // Ждём приглашение ">" от модуля (до 5 секунд)
   bool gotPrompt = false;
   for (int i = 0; i < 20; i++) { // 20 × 250ms = 5 сек
+    wdt_reset();
     if (SIM800L.available()) {
       String data = SIM800L.readString();
       if (data.indexOf('>') >= 0) {
@@ -232,20 +233,29 @@ bool SendSMS(String smsText, String phoneNumber) {
   SIM800L.write(0x1A);
   Serial.println(F("SMS text sent, waiting for confirmation..."));
 
-  // Ждём подтверждения +CMGS (до 30 секунд)
-  int waitCount = 0;
-  while (!SIM800L.available()) {
-    if (waitCount > 120) { // 120 × 250ms = 30 сек
-      Serial.println(F("SMS timeout"));
-      return false;
+  // Ждём подтверждения +CMGS/OK (до 30 секунд). Ответ может прийти частями.
+  String response = "";
+  response.reserve(120);
+  for (int waitCount = 0; waitCount < 120; waitCount++) {
+    wdt_reset();
+    while (SIM800L.available()) {
+      response += SIM800L.readString();
+      Serial.println(response);
+
+      if (response.indexOf(F("ERROR")) >= 0) {
+        Serial.println(F("SMS send error"));
+        return false;
+      }
+      if (response.indexOf(F("+CMGS:")) >= 0 || response.indexOf(F("OK")) >= 0) {
+        return true;
+      }
     }
     delay(250);
-    waitCount++;
   }
-  String response = SIM800L.readString();
-  Serial.println(response);
 
-  return response.indexOf(F("+CMGS:")) >= 0 || response.indexOf(F("OK")) >= 0;
+  Serial.println(F("SMS timeout"));
+  Serial.println(response);
+  return false;
 }
 
 void ActivateGsmModulePower() {

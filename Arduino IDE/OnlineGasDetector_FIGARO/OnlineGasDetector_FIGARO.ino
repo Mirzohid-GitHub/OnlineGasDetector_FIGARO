@@ -49,7 +49,6 @@ bool TestAlertIsActive = false;  // Режим теста
 #define FigaroAnalogPin A6 // Аналоговый пин Figaro
 
 // Thresholds
-int LedTreshold = 200;
 int BuzzerThreshold = 300;
 int SendRequestThreshold = 400;
 int HysteresisOffset = 50;
@@ -58,7 +57,6 @@ bool BuzzerAlertIsActive = false;       // Гистерезис зуммера
 bool SendRequestAlertIsActive = false;  // Гистерезис отправки запроса
 
 const int AlertDebounceThreshold = 5;
-int LedDebounceCount         = 0;
 int BuzzerDebounceCount      = 0;
 int SendRequestDebounceCount = 0;
 

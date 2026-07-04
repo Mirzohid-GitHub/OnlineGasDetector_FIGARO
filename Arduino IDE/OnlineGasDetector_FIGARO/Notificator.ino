@@ -48,12 +48,10 @@ void GenerateSosSignal() {
 }
 
 void SetBuzzerState(bool activate) {
-  if (AlertIsActive || TestAlertIsActive)
-    digitalWrite(AlertLedPin, activate);
-  else
-    digitalWrite(AlertLedPin, LOW);
-  if (!Mute && (BuzzerAlertIsActive || TestAlertIsActive))
+  bool buzzerIsOn = !Mute && (BuzzerAlertIsActive || TestAlertIsActive) && activate;
+  if (buzzerIsOn)
     digitalWrite(BuzzerPin, activate);
   else
     digitalWrite(BuzzerPin, LOW);
+  digitalWrite(AlertLedPin, buzzerIsOn);
 }

@@ -51,7 +51,6 @@ void TestButtonPressEvent() {
   TestAlertIsActive = true;
   AlertIsActive = true;
   NeedForSendRequest = true;
-  LedDebounceCount = 0;
   BuzzerDebounceCount = 0;
   SendRequestDebounceCount = 0;
 }
