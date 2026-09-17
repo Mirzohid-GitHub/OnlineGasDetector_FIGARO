@@ -51,20 +51,20 @@ void GasAnalyse() {
         BuzzerAlertIsActive = false;
     }
 
-    // Request alert hysteresis: ON >= 400, OFF < 350
-    // if (!SendRequestAlertIsActive) {
-    //   if (figaroAnalogValue >= SendRequestThreshold) {
-    //     SendRequestDebounceCount++;
-    //     if (SendRequestDebounceCount >= AlertDebounceThreshold) {
-    //       SendRequestAlertIsActive = true;
-    //       NeedForSendRequest = true;
-    //     }
-    //   } else {
-    //     SendRequestDebounceCount = 0;
-    //   }
-    // } else {
-    //   if (figaroAnalogValue < SendRequestThreshold - HysteresisOffset)
-    //     SendRequestAlertIsActive = false;
-    // }
+    // Отправка с debounce и гистерезисом: ON >= 400, повторно разрешается < 350.
+    if (!SendRequestAlertIsActive) {
+      if (filteredValue >= SendRequestThreshold) {
+        SendRequestDebounceCount++;
+        if (SendRequestDebounceCount >= AlertDebounceThreshold) {
+          SendRequestAlertIsActive = true;
+          NeedForSendRequest = true;
+          SendRequestDebounceCount = 0;
+        }
+      } else {
+        SendRequestDebounceCount = 0;
+      }
+    } else if (filteredValue < SendRequestThreshold - HysteresisOffset) {
+      SendRequestAlertIsActive = false;
+    }
   }
 }
