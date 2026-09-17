@@ -55,22 +55,30 @@ void TestButtonPressEvent() {
   SendRequestDebounceCount = 0;
 }
 
+uint8_t ResetCause __attribute__((section(".noinit")));
+
+// Выполняется до setup(): watchdog после reset нужно выключить как можно раньше.
+void CaptureResetCause() __attribute__((naked, used, externally_visible, section(".init3")));
+void CaptureResetCause() {
+  ResetCause = MCUSR;
+  MCUSR = 0;
+  wdt_disable();
+}
+
 void PrintResetCause() {
-  uint8_t mcusr = MCUSR;      // читаем сразу
-  MCUSR = 0;                  // очищаем, чтобы не мешать следующим сбросам
-  wdt_disable();              // на всякий случай отключаем watchdog
+  uint8_t mcusr = ResetCause;
 
   while (!Serial); // если нужно подождать
 
-  Serial.print("Причина перезагрузки (MCUSR = 0b");
+  Serial.print(F("Причина перезагрузки (MCUSR = 0b"));
   Serial.print(mcusr, BIN);
-  Serial.println("):");
+  Serial.println(F("):"));
 
-  if (mcusr & (1 << PORF))  Serial.println("  - Power-on reset (включение питания)");
-  if (mcusr & (1 << EXTRF)) Serial.println("  - External reset (кнопка Reset или пин RESET)");
-  if (mcusr & (1 << BORF))  Serial.println("  - Brown-out reset (падение напряжения)");
-  if (mcusr & (1 << WDRF))  Serial.println("  - Watchdog reset (сработал сторожевой таймер)");
+  if (mcusr & (1 << PORF))  Serial.println(F("  - Power-on reset (включение питания)"));
+  if (mcusr & (1 << EXTRF)) Serial.println(F("  - External reset (кнопка Reset или пин RESET)"));
+  if (mcusr & (1 << BORF))  Serial.println(F("  - Brown-out reset (падение напряжения)"));
+  if (mcusr & (1 << WDRF))  Serial.println(F("  - Watchdog reset (сработал сторожевой таймер)"));
 
-  if (mcusr == 0) Serial.println("  - Возможно программный jump на 0 или Serial-DTR сброс");
+  if (mcusr == 0) Serial.println(F("  - Причина не сохранена загрузчиком"));
   Serial.println();
 }
