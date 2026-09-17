@@ -1,16 +1,24 @@
 volatile int SosSignalStep = 0;
 const int SosMinInterval = 100;
+short SosCyclesCount = 0;
 
 void GenerateSosSignal() {
   // Генерация сигнала S.O.S.
   if (Preparing && !TestAlertIsActive) 
     return;
-  // NeedForSendRequest удерживает тревогу до полной отправки HTTP и SMS.
-  if (AlertIsActive || TestAlertIsActive || NeedForSendRequest) {
+  if (AlertIsActive || TestAlertIsActive) {
     if (SosSignalStep > 16) {
       SignalSwitchWorkInterval = SosMinInterval * 10;
       SetBuzzerState(0);
       SosSignalStep = 0;
+      if(TestAlertIsActive) {
+        SosCyclesCount++;
+        if(SosCyclesCount > 30){
+          TestAlertIsActive = false;
+          AlertIsActive = false;
+          SosCyclesCount = 0;
+        }
+      }
     } else if (SosSignalStep == 5 || SosSignalStep == 7 || SosSignalStep == 9 || SosSignalStep == 11) {
       SetBuzzerState(0);
       SignalSwitchWorkInterval = SosMinInterval * 2;
@@ -36,11 +44,12 @@ void GenerateSosSignal() {
   uint32_t ticks = ((F_CPU / 1024UL / 1000UL) * (uint32_t)SignalSwitchWorkInterval) - 1;
   if (ticks > 65535UL) ticks = 65535UL;  // Ограничение для 16-бит таймера
   next_ocr = (uint16_t)ticks;
+  wdt_reset();
 }
 
 void SetBuzzerState(bool activate) {
-  bool buzzerIsOn = !Mute && (BuzzerAlertIsActive || TestAlertIsActive || NeedForSendRequest) && activate;
-  bool alertLedIsOn = (AlertIsActive || TestAlertIsActive || NeedForSendRequest) && activate;
+  bool buzzerIsOn = !Mute && (BuzzerAlertIsActive || TestAlertIsActive) && activate;
+  bool alertLedIsOn = (AlertIsActive || TestAlertIsActive) && activate;
   if (ManualBuzzerIsOn || buzzerIsOn)
     digitalWrite(BuzzerPin, HIGH);
   else

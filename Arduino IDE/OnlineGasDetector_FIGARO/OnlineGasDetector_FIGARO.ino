@@ -5,7 +5,7 @@
 
 #define MODEM_RX 11
 #define MODEM_TX 10
-#define MODEM_POWER_PIN  12
+#define MODEM_POWER_PIN  9
 #define MODEM_BAUD 19200
 
 unsigned long SendRequestLastTickTime = 0;
@@ -24,8 +24,8 @@ bool GsmPowerIsOn = false;
 #define TestButtonPin 3
 #define MuteButtonPin 2
 #define BuzzerPin 13
-#define AliveLedPin 7
-#define AlertLedPin 5
+#define AliveLedPin 5
+#define AlertLedPin 7
 
 unsigned long AliveIndicatorLastTickTime = 0;
 const unsigned long AliveIndicatorWorkInterval = 5000;
@@ -40,8 +40,8 @@ int SignalSwitchWorkInterval = 200;
 const unsigned long ResetInterval = 3600000UL;
 
 volatile bool Mute = false;      // Нажата кнопка молчания
-volatile bool AlertIsActive = false;      // Используется также из ISR таймера
-volatile bool TestAlertIsActive = false;  // Используется также из ISR таймера
+bool AlertIsActive = false;      // Режим тревоги
+bool TestAlertIsActive = false;  // Режим теста
 bool ManualBuzzerIsOn = false;
 bool ManualAlertLedIsOn = false;
 bool ManualAliveLedIsOn = false;
@@ -70,20 +70,16 @@ unsigned long GasAnalyseLastTickTime = 0;
 const unsigned long GasAnalyseWorkInterval = 0;
 
 bool PlotterMode = true;              // Выводим значения в гравик //FORTEST
-volatile bool Preparing = true;       // Используется также из ISR таймера
+bool Preparing = true;                // Выводим значения в гравик //FORTEST
 
 float COConcentration = 0;  // Концентрация Угарного газа
 #pragma endregion
 
-const char deviceId[] = "123";
+String deviceId = "123";
 SoftwareSerial SIM800L(MODEM_RX, MODEM_TX);
 
 //Програмная перезагрузка контроллера
-void RebootController() {
-  Serial.flush();
-  wdt_enable(WDTO_15MS);
-  while (true) { }
-}
+void (*Reboot)(void) = 0;
 
 void setup() {
   Preparing = true;
@@ -93,11 +89,7 @@ void setup() {
   pinMode(AliveLedPin, OUTPUT);
   pinMode(MuteButtonPin, INPUT_PULLUP);
   pinMode(TestButtonPin, INPUT_PULLUP);
-  // Сначала фиксируем LOW в выходном регистре, затем включаем режим OUTPUT.
-  // Так при старте не возникает случайного импульса включения модема.
-  digitalWrite(MODEM_POWER_PIN, LOW);
   pinMode(MODEM_POWER_PIN, OUTPUT);
-  GsmPowerIsOn = false;
   pinMode(FigaroAnalogPin, INPUT);
 
   digitalWrite(BuzzerPin, LOW);
@@ -125,7 +117,7 @@ void setup() {
   wdt_enable(WDTO_8S);
   Preparing = false;
 
-  Serial.println(F("Start"));
+  Serial.println("Start");
 }
 
 void loop() {
@@ -150,18 +142,16 @@ void loop() {
       digitalWrite(AliveLedPin, LOW);
   }
   //Выключаем режим Mute, если Alert выключен
-  if (!AlertIsActive && !TestAlertIsActive && !NeedForSendRequest) {
+  if (!AlertIsActive) {
     Mute = false;
   }
   // Сброс сторожевого таймера
   if (tick(WatchDogResetLastTickTime, WatchDogResetWorkInterval)) {
     wdt_reset();
   }
-
-  // // Перезагрузка каждый час (tick корректно обрабатывает переполнение millis)
-  // if (tick(RebootLastTickTime, ResetInterval) && !AlertIsActive && !TestAlertIsActive) {
-  //   Serial.println(F("REBOOT: hourly timer"));
-  //   RestartGsmModule();
-  //   RebootController();
-  // }
+  // Перезагрузка каждый час (tick корректно обрабатывает переполнение millis)
+  if (tick(RebootLastTickTime, ResetInterval) && !AlertIsActive && !TestAlertIsActive) {
+    RestartGsmModule();
+    Reboot();
+  }
 }
